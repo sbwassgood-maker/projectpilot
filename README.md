@@ -92,3 +92,11 @@ npm run e2e         # full Johnson Residence flow against a real database
 ```
 
 The `e2e` script creates a user + project, uploads and processes the sample documents in `samples/`, and asserts that events, change orders, financials, evidence, timeline, Needs Attention, and the weekly report all derive correctly from real data.
+
+## Deploying to Vercel
+
+See **[DEPLOY.md](./DEPLOY.md)** for step-by-step instructions. In short: import the repo, add a hosted Postgres (Vercel Postgres/Neon) and a Vercel Blob store, set the environment variables, and deploy. Migrations run automatically via the build command (`prisma generate && prisma migrate deploy && next build`).
+
+### File storage
+
+`src/lib/storage.ts` uses a single interface with two backends: the local filesystem in development, and **Vercel Blob** in production (activated automatically when `BLOB_READ_WRITE_TOKEN` is set). Serverless filesystems are ephemeral, so durable object storage is required for uploads to persist on Vercel.

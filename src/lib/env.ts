@@ -21,4 +21,8 @@ export const env = {
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
 
   fileStorageDir: process.env.FILE_STORAGE_DIR ?? "./storage/uploads",
+
+  // When set, uploaded documents are stored in Vercel Blob (durable object
+  // storage) instead of the local filesystem. Required on Vercel.
+  blobReadWriteToken: process.env.BLOB_READ_WRITE_TOKEN ?? "",
 };
