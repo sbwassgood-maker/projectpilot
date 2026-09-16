@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Node CommonJS bootstrap helpers (must use require()).
+    "scripts/run-node-script.js",
+    "scripts/server-only-shim.js",
   ]),
 ]);
 

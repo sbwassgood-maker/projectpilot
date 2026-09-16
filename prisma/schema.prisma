@@ -1,0 +1,370 @@
+// ProjectPilot data model
+// -----------------------------------------------------------------------------
+// Design principles:
+//  - Multi-tenant safety: every Project belongs to a User; all child records
+//    hang off a Project. Authorization always scopes queries by userId.
+//  - Evidence-first: every AI-derived record (events, risks, tasks, financials,
+//    change orders, people, vendors, schedule items) references the source
+//    Document it was extracted from, plus an optional snippet/location and a
+//    confidence score. Nothing AI-generated is stored without provenance.
+//  - The LLM never writes to the database. Services validate structured JSON
+//    with Zod and then perform the writes here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  projects     Project[]
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+enum ProjectStatus {
+  planning
+  in_progress
+  on_hold
+  completed
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name           String
+  clientName     String?
+  address        String?
+  startDate      DateTime?
+  targetEndDate  DateTime?
+  status         ProjectStatus @default(in_progress)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  documents      Document[]
+  events         ProjectEvent[]
+  risks          Risk[]
+  tasks          Task[]
+  financialItems FinancialItem[]
+  changeOrders   ChangeOrder[]
+  people         Person[]
+  vendors        Vendor[]
+  scheduleItems  ScheduleItem[]
+  reports        Report[]
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Documents
+// ---------------------------------------------------------------------------
+
+enum DocumentStatus {
+  uploading
+  processing
+  processed
+  needs_review
+  failed
+}
+
+enum DocumentType {
+  pdf
+  docx
+  xlsx
+  csv
+  txt
+  image
+  other
+}
+
+model Document {
+  id             String         @id @default(cuid())
+  projectId      String
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  filename       String
+  storageKey     String         // path/key within the storage backend
+  mimeType       String
+  docType        DocumentType   @default(other)
+  sizeBytes      Int            @default(0)
+  status         DocumentStatus @default(uploading)
+
+  extractedText  String?        @db.Text
+  processingError String?       @db.Text
+
+  uploadedAt     DateTime       @default(now())
+  processedAt    DateTime?
+
+  // Records extracted from this document (for cascade + provenance lookups)
+  events         ProjectEvent[]
+  risks          Risk[]
+  tasks          Task[]
+  financialItems FinancialItem[]
+  changeOrders   ChangeOrder[]
+  people         Person[]
+  vendors        Vendor[]
+  scheduleItems  ScheduleItem[]
+
+  @@index([projectId])
+}
+
+// ---------------------------------------------------------------------------
+// Shared enums for AI-derived intelligence
+// ---------------------------------------------------------------------------
+
+enum Severity {
+  low
+  medium
+  high
+}
+
+enum EventType {
+  milestone_completed
+  work_completed
+  work_underway
+  schedule_delay
+  schedule_change
+  inspection
+  delivery
+  change_order
+  cost
+  invoice
+  decision
+  issue
+  risk
+  meeting
+  upcoming_work
+  other
+}
+
+// ---------------------------------------------------------------------------
+// AI-derived records (all carry evidence back to a source Document)
+// ---------------------------------------------------------------------------
+
+model ProjectEvent {
+  id               String     @id @default(cuid())
+  projectId        String
+  project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  type             EventType  @default(other)
+  title            String
+  description      String     @db.Text
+  eventDate        DateTime?
+  severity         Severity   @default(low)
+
+  // Evidence
+  sourceDocumentId String
+  sourceDocument   Document   @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?    // e.g. "page 2", "row 14", "paragraph 3"
+  snippet          String?    @db.Text
+  confidence       Float      @default(0)
+
+  createdAt        DateTime   @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+model Risk {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title            String
+  description      String    @db.Text
+  severity         Severity  @default(medium)
+  status           String    @default("open") // open | mitigated | closed
+  dueDate          DateTime?
+
+  sourceDocumentId String
+  sourceDocument   Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?
+  snippet          String?   @db.Text
+  confidence       Float     @default(0)
+
+  createdAt        DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+model Task {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title            String
+  description      String    @db.Text
+  status           String    @default("open") // open | in_progress | done
+  dueDate          DateTime?
+  assignee         String?
+
+  sourceDocumentId String
+  sourceDocument   Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?
+  snippet          String?   @db.Text
+  confidence       Float     @default(0)
+
+  createdAt        DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+model FinancialItem {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  kind             String    // invoice | cost | payment | budget | other
+  description      String    @db.Text
+  amount           Decimal?  @db.Decimal(14, 2)
+  currency         String    @default("USD")
+  itemDate         DateTime?
+
+  sourceDocumentId String
+  sourceDocument   Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?
+  snippet          String?   @db.Text
+  confidence       Float     @default(0)
+
+  createdAt        DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+model ChangeOrder {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  number           String?
+  title            String
+  description      String    @db.Text
+  amount           Decimal?  @db.Decimal(14, 2)
+  currency         String    @default("USD")
+  status           String    @default("submitted") // submitted | awaiting_approval | approved | rejected
+  itemDate         DateTime?
+
+  sourceDocumentId String
+  sourceDocument   Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?
+  snippet          String?   @db.Text
+  confidence       Float     @default(0)
+
+  createdAt        DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+model Person {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name             String
+  role             String?
+  organization     String?
+  email            String?
+  phone            String?
+
+  sourceDocumentId String
+  sourceDocument   Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?
+  snippet          String?   @db.Text
+  confidence       Float     @default(0)
+
+  createdAt        DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+model Vendor {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name             String
+  trade            String?   // e.g. flooring, electrical, plumbing
+  contact          String?
+
+  sourceDocumentId String
+  sourceDocument   Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?
+  snippet          String?   @db.Text
+  confidence       Float     @default(0)
+
+  createdAt        DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+model ScheduleItem {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title            String
+  description      String?   @db.Text
+  plannedStart     DateTime?
+  plannedEnd       DateTime?
+  status           String    @default("planned") // planned | in_progress | completed | delayed
+
+  sourceDocumentId String
+  sourceDocument   Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceLocation   String?
+  snippet          String?   @db.Text
+  confidence       Float     @default(0)
+
+  createdAt        DateTime  @default(now())
+
+  @@index([projectId])
+  @@index([sourceDocumentId])
+}
+
+// ---------------------------------------------------------------------------
+// Reports
+// ---------------------------------------------------------------------------
+
+model Report {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title         String
+  periodStart   DateTime
+  periodEnd     DateTime
+
+  // Structured report content (sections + evidence refs) as JSON, plus a
+  // rendered markdown form the user can edit.
+  content       Json
+  markdown      String   @db.Text
+  edited        Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([projectId])
+}

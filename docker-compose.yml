@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: projectpilot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: projectpilot
+      POSTGRES_PASSWORD: projectpilot
+      POSTGRES_DB: projectpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - projectpilot_pgdata:/var/lib/postgresql/data
+
+volumes:
+  projectpilot_pgdata:

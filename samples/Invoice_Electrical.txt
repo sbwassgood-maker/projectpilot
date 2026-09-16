@@ -1,0 +1,10 @@
+INVOICE
+Vendor: Brightline Electrical Contractors
+Project: Johnson Residence
+Invoice Date: September 16, 2026
+
+Description: Rough electrical wiring — first and second floor.
+Amount: $12,450.00
+
+Payment terms: Net 30.
+Contact: by Dana Whitfield, Foreman

@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ProjectPilot
 
-## Getting Started
+AI-powered construction project reporting & intelligence for small/medium general contractors.
 
-First, run the development server:
+Upload your existing project documents (emails, PDFs, spreadsheets, daily reports, change orders, invoices) and ProjectPilot uses an LLM to build an **evidence-backed** understanding of the project: a chronological timeline, an automatically generated **Needs Attention** list, and a professional **weekly report** — where every factual claim links back to its source document.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## The MVP wedge
+
+`Project information → AI understanding → evidence-backed intelligence → weekly report`
+
+The complete flow works end-to-end with real persistence:
+
+1. Sign up / log in
+2. Create a project (e.g. *Johnson Residence*)
+3. Upload documents (PDF, DOCX, XLSX, CSV, TXT, JPG, PNG)
+4. Documents are read and analyzed; structured, **validated** JSON is extracted
+5. Events appear on the **Timeline** (filterable)
+6. Risks and pending items appear in **Needs Attention** (with "why it matters" + evidence)
+7. Click **Generate Weekly Report** → an evidence-backed report is drafted from the actual project data
+8. Edit / Regenerate / **Download PDF**
+
+## Tech stack
+
+- **Next.js 16** (App Router) + **TypeScript** + **React 19**
+- **PostgreSQL** + **Prisma** ORM
+- **Tailwind CSS v4** — clean, professional construction/SaaS design
+- **Zod** — validates every AI output before persistence
+- **OpenAI** — real LLM integration (JSON mode), abstracted behind a provider seam
+
+## Architecture
+
+The AI layer is fully separated from the UI. The LLM **never** touches the database — it returns JSON, which is validated with Zod and then written by the app.
+
+```
+src/lib/ai/
+  client.ts             # provider adapter (OpenAI | mock), server-side only
+  documentProcessor.ts  # file bytes -> normalized text (pdf/docx/xlsx/csv/txt)
+  eventExtractor.ts     # text -> Zod-validated structured extraction (+ repair retry)
+  reportGenerator.ts    # structured data -> validated weekly report + markdown
+  pipeline.ts           # upload -> extract -> validate -> persist (transactional)
+  prompts.ts            # zero-fabrication system prompts
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Zero-fabrication rule
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The model is instructed to extract **only** information supported by the source text, to attach a verbatim `snippet` + `confidence` to every item, and to omit values it cannot support. Missing information renders as **"Not available."** / **"Information not available."** rather than a guess. Report evidence references are filtered to documents the user owns.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Security
 
-## Learn More
+- Credentials auth (bcrypt) with a signed, httpOnly session cookie
+- Every project/document/report access is re-checked for ownership (`src/lib/authz.ts`) — a user can never reach another user's data
+- Uploaded documents are served only through an ownership-gated route
+- All secrets (DB, `OPENAI_API_KEY`, `AUTH_SECRET`) are read **server-side only** from env vars — never hardcoded, never sent to the browser
 
-To learn more about Next.js, take a look at the following resources:
+## Getting started
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cp .env.example .env          # then fill in values
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Start Postgres (Docker):
+docker compose up -d
 
-## Deploy on Vercel
+# Or use the bundled helper for sandboxes without Docker networking:
+#   scripts/with-db.sh runs a command with a local Postgres available.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+npx prisma migrate deploy     # apply schema
+npm run db:seed               # optional: demo account + Johnson Residence
+npm run dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Then open http://localhost:3000. Demo login (after seeding): `demo@projectpilot.app` / `demo12345`.
+
+### AI provider
+
+Set in `.env`:
+
+```
+AI_PROVIDER=openai            # real OpenAI (default)
+OPENAI_API_KEY=sk-...         # server-side only
+OPENAI_MODEL=gpt-4o-mini
+```
+
+For local/offline development without a key, set `AI_PROVIDER=mock` to use a deterministic local extractor that exercises the full pipeline.
+
+## Verification
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm run lint        # eslint
+npm run build       # next build
+npm run e2e         # full Johnson Residence flow against a real database
+```
+
+The `e2e` script creates a user + project, uploads and processes the sample documents in `samples/`, and asserts that events, change orders, financials, evidence, timeline, Needs Attention, and the weekly report all derive correctly from real data.
