@@ -50,9 +50,9 @@ Project → **Settings → Environment Variables** (Production + Preview):
 | `DATABASE_URL` | *(pooled, from step 2)* | Neon **pooled** URL (host has `-pooler`); used at runtime |
 | `DATABASE_URL_UNPOOLED` | *(direct, from step 2)* | Neon **unpooled** URL; used by `prisma migrate deploy` |
 | `AUTH_SECRET` | long random string | `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `AI_PROVIDER` | `openai` | use `mock` only for a keyless demo |
-| `OPENAI_API_KEY` | `sk-...` | server-side only |
-| `OPENAI_MODEL` | `gpt-4o-mini` | or another chat model |
+| `AI_PROVIDER` | `mock` or `openai` | **Optional** — defaults to `mock` (keyless) if unset. Use `openai` for the real LLM. |
+| `OPENAI_API_KEY` | `sk-...` | **Only needed when `AI_PROVIDER=openai`.** Server-side only. |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Optional; only used with `openai`. |
 | `BLOB_READ_WRITE_TOKEN` | *(from step 3)* | auto-added when you create the Blob store |
 
 ## 5. Deploy
