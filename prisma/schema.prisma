@@ -15,8 +15,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Runtime connection (use the pooled URL on serverless / Neon).
+  url       = env("DATABASE_URL")
+  // Direct (non-pooled) connection used for migrations. On Vercel+Neon set this
+  // to DATABASE_URL_UNPOOLED. Locally it points at the same DATABASE_URL.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // ---------------------------------------------------------------------------

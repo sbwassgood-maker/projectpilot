@@ -47,7 +47,8 @@ Project → **Settings → Environment Variables** (Production + Preview):
 
 | Variable | Value | Notes |
 |---|---|---|
-| `DATABASE_URL` | *(from step 2)* | Auto-added by Vercel Postgres; set manually otherwise |
+| `DATABASE_URL` | *(pooled, from step 2)* | Neon **pooled** URL (host has `-pooler`); used at runtime |
+| `DATABASE_URL_UNPOOLED` | *(direct, from step 2)* | Neon **unpooled** URL; used by `prisma migrate deploy` |
 | `AUTH_SECRET` | long random string | `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
 | `AI_PROVIDER` | `openai` | use `mock` only for a keyless demo |
 | `OPENAI_API_KEY` | `sk-...` | server-side only |
@@ -79,8 +80,14 @@ Or just sign up through the UI.
 
 - **Build fails: `Environment variable not found: DATABASE_URL`** — add
   `DATABASE_URL` (step 4) and redeploy.
-- **`prisma migrate deploy` fails / connection errors** — ensure the DB allows
-  connections from Vercel and you used the **pooled** connection string.
+- **Build fails: `Environment variable not found: DATABASE_URL`** — the Neon/
+  Postgres store isn't attached to the **Production** environment, or the build
+  ran before it was added. Add both `DATABASE_URL` (pooled) and
+  `DATABASE_URL_UNPOOLED` (direct) in Settings → Environment Variables, then
+  redeploy.
+- **`prisma migrate deploy` fails with a pooling/prepared-statement error** —
+  make sure `DATABASE_URL_UNPOOLED` is set to Neon's **direct** (non-pooler)
+  connection string; the schema uses it as Prisma's `directUrl` for migrations.
 - **Uploads succeed but documents won't open / 500 on processing** —
   `BLOB_READ_WRITE_TOKEN` is missing; create the Blob store (step 3) and
   redeploy.
